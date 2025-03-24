@@ -1,8 +1,9 @@
+import asyncio
 import time
-import websocket
 import json
 import os
 from colorama import Fore
+import websockets
 if os.name == 'nt':
     import colorama
     colorama.init()
@@ -27,7 +28,7 @@ if os.name == 'nt':
   "c": Canal de origem da atualização
 }
 '''
-def valor1(ws, message):
+async def valor1(ws, message):
     try:
         json_message = json.loads(message)
         if 'd' in json_message:
@@ -50,7 +51,7 @@ def valor1(ws, message):
         #print(Fore.RED + "[ERRO] Falha ao processar valor1:", str(e) + Fore.RESET)
         pass
 
-def valor2(ws, message):
+async def valor2(ws, message):
     try:
         json_message = json.loads(message)
         if 'd' in json_message:
@@ -71,33 +72,42 @@ def valor2(ws, message):
         #print(Fore.RED + "[ERRO] Falha ao processar valor2:", str(e) + Fore.RESET)
         pass
 
-def on_message(ws, message):
+async def on_message(ws, message):
     try:
-        valor1(ws, message)
-        valor2(ws, message)
+        await valor1(ws, message)
+        await valor2(ws, message)
     except Exception as e:
         print(Fore.RED + "Error:", str(e) + Fore.RESET)
 
-def on_open(ws):
-    print(Fore.GREEN + "[INFO] Conectado ao WebSocket" + Fore.RESET)
-    ws.send(json.dumps({"method": "RSUBSCRIPTION", "params": ["main-site@crypto_price_5s@{}@normal",
-                                                              "1,1027,52,825,5426,6536,1975"]}))
-
-def on_close(ws, close_status_code, close_msg):
+async def on_close(ws, close_status_code, close_msg):
     time.sleep(1)
     conectar_websocket()
 
-def conectar_websocket():
-    ws = websocket.WebSocketApp(
-        "wss://push.coinmarketcap.com/ws?device=web&client_source=home_page",
-        on_message=on_message,
-        on_close=on_close,
-        header={"Origin": "https://coinmarketcap.com",
-                "Referer": "https://coinmarketcap.com",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
-    )
-    ws.on_open = on_open
-    ws.run_forever()
+
+URL = "wss://push.coinmarketcap.com/ws?device=web&client_source=home_page"
+HEADERS = {
+    "Origin": "https://coinmarketcap.com",
+    "Referer": "https://coinmarketcap.com",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+}
+
+SUBSCRIPTION_MESSAGE = json.dumps({
+    "method": "RSUBSCRIPTION",
+    "params": ["main-site@crypto_price_5s@{}@normal", "1,1027,52,825,5426,6536,1975"]
+})
+
+async def conectar_websocket():
+    while True:
+        try:
+            async with websockets.connect(URL, extra_headers=HEADERS) as ws:
+                print(Fore.GREEN + "[INFO] Conectado ao WebSocket" + Fore.RESET)
+                await ws.send(SUBSCRIPTION_MESSAGE)
+
+                async for message in ws:
+                    await on_message(ws, message)
+        except Exception as e:
+            print(Fore.RED + "[ERRO] Tentando reconectar..." + Fore.RESET)
+            await asyncio.sleep(1)
 
 if __name__ == "__main__":
-    conectar_websocket()
+    asyncio.run(conectar_websocket())
